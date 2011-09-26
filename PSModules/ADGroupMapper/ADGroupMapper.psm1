@@ -138,6 +138,7 @@ Function Get-MappedGroupMembers
     Begin
     {
 		$out = New-Object System.Collections.ArrayList
+		$allUsers = New-Object System.Collections.ArrayList
     }
     
     Process
@@ -163,18 +164,27 @@ Function Get-MappedGroupMembers
 					$de = Get-DirectoryEntry $user -Server $Server -UseSSL:$UseSSL
 					if ((-not $de.AccountDisabled) -or $IncludeDisabled)
 					{
-						$mapping = New-Object PSObject -Property @{
-							UserName = [string]$de.sAMAccountName
-							MappedGroup = [string]$groupElement.Name
-						}
-						
-						if ($OutputPath)
+						$sam = [string]$de.sAMAccountName
+						if ($allUsers -contains $sam)
 						{
-							[Void]$out.Add($mapping)
+							Write-Warning "The user '$sam' is member of more than one mapped groups. The membership in the group '$($groupElement.ADName)' is ignored."
 						}
 						else
 						{
-							Write-Output $mapping
+							[Void]$allUsers.Add($sam)
+							$mapping = New-Object PSObject -Property @{
+								UserName = [string]$de.sAMAccountName
+								MappedGroup = [string]$groupElement.Name
+							}
+							
+							if ($OutputPath)
+							{
+								[Void]$out.Add($mapping)
+							}
+							else
+							{
+								Write-Output $mapping
+							}
 						}
 					}
 				}
