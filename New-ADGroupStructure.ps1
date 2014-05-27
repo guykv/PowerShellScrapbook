@@ -42,25 +42,23 @@
     Path to a Group definitions XML file
     .Parameter PassThru
     Whether the group objects are to be output from the script
+    .Parameter GetSchema
+    Outputs the group definition XSD schema
 #>
-[CmdletBinding(SupportsShouldProcess = $true)]
+[CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = 'GroupDefinitions')]
 Param
 (
-    [Parameter(Mandatory = $true)]
+    [Parameter(ParameterSetName = 'GroupDefinitions', Mandatory = $true)]
     $GroupDefinitions,
 
-    [Parameter()]
-    [switch]$PassThru
+    [Parameter(ParameterSetName = 'GroupDefinitions')]
+    [switch]$PassThru,
+
+    [Parameter(ParameterSetName = 'GetSchema')]
+    [switch]$GetSchema
 )
 
-if (-not (Get-Module -Name ActiveDirectory))
-{
-    Import-Module -Name ActiveDirectory
-    if (-not $?)
-    {
-        break
-    }
-}
+Import-Module -Name ActiveDirectory -ErrorAction Stop
 
 $XML_SCHEMA = @"
 <?xml version="1.0"?>
@@ -501,6 +499,12 @@ Function Use-GroupDefinitions
 	End
 	{
 	}
+}
+
+if ($GetSchema)
+{
+    $XML_SCHEMA
+    break
 }
 
 Use-GroupDefinitions -GroupDefinitions $GroupDefinitions -PassThru:$PassThru
