@@ -85,6 +85,8 @@ Function Format-MarkdownTable
         if ($Properties)
         {
             $header = $Properties
+            $maxWidths = @(0) * $header.Length
+            $allRows += ,$header
         }
     }
 
@@ -155,13 +157,14 @@ foreach ($f in (Get-ChildItem -Path "$PSScriptRoot\Scripts" -Filter "*.ps1"))
 {
     $synopsis = (Get-PowerShellHelpCommentBlock -Path $f.FullName -Keyword ".SYNOPSIS" | %{ $_.Trim() }) -join " "
     $rows += New-Object -TypeName PSObject -Property @{
-        Name = "Scripts\" + $f.Name
+        Name = $f.Name
+        Type = "Script"
         Synopsis = $synopsis
     }
 }
 
 $text = $CONSTANTS.TopText
-$text += ($rows | Format-MarkdownTable | Out-String)
+$text += ($rows | Format-MarkdownTable -Properties Name,Type,Synopsis | Out-String)
 
 if ($ConsoleOnly)
 {
