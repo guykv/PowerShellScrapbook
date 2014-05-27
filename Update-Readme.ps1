@@ -4,7 +4,11 @@
     .Description
     This script extracts information from the 
 #>
-
+Param
+(
+    [Parameter()]
+    [switch]$ConsoleOnly
+)
 
 $CONSTANTS = Data {
     @{
@@ -14,6 +18,7 @@ PowerShellRecycleBin
 
 This is simply a repository of PowerShell functions and scripts that might sometime
 in the future become handy once more.
+
 
 "@
 
@@ -128,16 +133,22 @@ Function Format-MarkdownTable
 
             $row = $cells -join " | "
             Write-Output -InputObject $row
+
             if ($firstRow)
             {
-                Write-Output -InputObject (New-Object String("-", $row.Length))
+                $cells = @()
+                for ($i = 0; $i -lt $header.Length; $i++)
+                {
+                    $cells += New-Object String("-", $maxWidths[$i])
+                }
+
+                $row = $cells -join " | "
+                Write-Output -InputObject $row
                 $firstRow = $false
             }
         }
     }
 }
-
-$text = $CONSTANTS.TopText
 
 $rows = @()
 foreach ($f in (Get-ChildItem -Path "$PSScriptRoot\Scripts" -Filter "*.ps1"))
@@ -149,5 +160,14 @@ foreach ($f in (Get-ChildItem -Path "$PSScriptRoot\Scripts" -Filter "*.ps1"))
     }
 }
 
-$CONSTANTS.TopText | Set-Content -Path $CONSTANTS.FileName
-$rows | Format-MarkdownTable | Add-Content -Path $CONSTANTS.FileName
+$text = $CONSTANTS.TopText
+$text += ($rows | Format-MarkdownTable | Out-String)
+
+if ($ConsoleOnly)
+{
+    Write-Host $text
+}
+else
+{
+    Set-Content -Value $text -Path $CONSTANTS.FileName
+}
