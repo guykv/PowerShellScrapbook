@@ -5,7 +5,7 @@ Param
     [int]$Count = 1,
 
     [Parameter()]
-    [string]$UPNSuffix,
+    [string]$Container,
 
     [Parameter()]
     [string[]]$Groups,
@@ -29,16 +29,22 @@ Param
     [string]$Department = "Testing Department",
 
     [Parameter()]
+    [string]$Company = "Test Company",
+
+    [Parameter()]
     [string]$Description = "User account for testing purposes",
 
     [Parameter()]
     [bool]$ChangePasswordAtLogon = $true,
 
     [Parameter()]
+    [bool]$PasswordNeverExpires = $false,
+
+    [Parameter()]
     [string]$Domain,
 
     [Parameter()]
-    [string]$Container,
+    [string]$UPNSuffix,
 
     [Parameter()]
     [switch]$PassThru
@@ -96,10 +102,28 @@ for ($i = 0; $i -lt $Count; $i++)
     {
         $suffix++
         $sam = $Prefix + $suffix
+        $upn = $sam + "@" + $actualUPNSuffix
     }
 
-    $pw = ConvertTo-SecureString $Password -AsPlainText -Force
-    $user = New-ADUser -Path $actualContainer -SamAccountName $sam -Name $sam -UserPrincipalName $upn -GivenName $GivenName -Surname "$SurnamePrefix$suffix" -DisplayName "$GivenName $SurnamePrefix$suffix" -Title $Title -Department $Department -Description $Description -AccountPassword $pw -ChangePasswordAtLogon $ChangePasswordAtLogon -Enabled $true
+    $params = @{
+        Path = $actualContainer
+        SamAccountName = $sam
+        Name = $sam
+        UserPrincipalName = $upn
+        GivenName = $GivenName
+        Surname = "$SurnamePrefix$suffix"
+        DisplayName = "$GivenName $SurnamePrefix$suffix"
+        Title = $Title
+        Department = $Department
+        Company = $Company
+        Description = $Description
+        AccountPassword = ConvertTo-SecureString $Password -AsPlainText -Force
+        ChangePasswordAtLogon = $ChangePasswordAtLogon
+        PasswordNeverExpires = $PasswordNeverExpires
+        Enabled = $true
+    }
+
+    $user = New-ADUser @params -PassThru
     if ($user -and $actualGroups)
     {
         foreach ($g in $actualGroups)
