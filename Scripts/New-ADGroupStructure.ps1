@@ -2,8 +2,8 @@
 
 <#
     .Synopsis
-    Creates organizational units and groups in Active Directory according to
-    a simple XML configuration file.
+    Creates organizational units and groups in Active Directory from XML
+    configuration
     .Description
     The script will work also if some or all of the OUs or groups already exist.
     The OU descriptions will in such case be corrected if they are different

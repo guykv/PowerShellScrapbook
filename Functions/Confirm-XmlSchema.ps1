@@ -1,7 +1,7 @@
 <#
     .Synopsis
     Confirms that a given XML file conforms to the specified
-    XSD schema.
+    XSD schema
     .Description
     This function uses the built in XML API to confirm that
     XML files conforms to a specific XSD schema definition.

@@ -153,18 +153,20 @@ Function Format-MarkdownTable
 }
 
 $rows = @()
-foreach ($f in (Get-ChildItem -Path "$PSScriptRoot\Scripts" -Filter "*.ps1"))
-{
-    $synopsis = (Get-PowerShellHelpCommentBlock -Path $f.FullName -Keyword ".SYNOPSIS" | %{ $_.Trim() }) -join " "
-    $rows += New-Object -TypeName PSObject -Property @{
-        Name = $f.Name
-        Type = "Script"
-        Synopsis = $synopsis
+'Scripts', 'Functions' | foreach {
+    $type = $_ -replace "s$", ""
+    Get-ChildItem -Path "$PSScriptRoot\$_" | foreach {
+        $synopsis = (Get-PowerShellHelpCommentBlock -Path $_.FullName -Keyword ".SYNOPSIS" | %{ $_.Trim() }) -join " "
+        $rows += New-Object -TypeName PSObject -Property @{
+            Name = $_.Name
+            Type = $type
+            Synopsis = $synopsis
+        }
     }
 }
 
 $text = $CONSTANTS.TopText
-$text += ($rows | Format-MarkdownTable -Properties Name,Type,Synopsis | Out-String)
+$text += ($rows | Sort-Object -Property Name | Format-MarkdownTable -Properties Name,Type,Synopsis | Out-String)
 
 if ($ConsoleOnly)
 {
