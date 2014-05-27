@@ -4,6 +4,7 @@ PowerShellRecycleBin
 This is simply a repository of PowerShell functions and scripts that might sometime
 in the future become handy once more.
 
+###Overview
 Name                     | Type     | Synopsis                                                                          
 ------------------------ | -------- | ----------------------------------------------------------------------------------
 Confirm-XmlSchema.ps1    | Function | Confirms that a given XML file conforms to the specified XSD schema               
