@@ -60,7 +60,9 @@ Param
 
 Import-Module -Name ActiveDirectory -ErrorAction Stop
 
-$XML_SCHEMA = @"
+$CONSTANTS = DATA {
+    @{
+        XML_SCHEMA = @"
 <?xml version="1.0"?>
 <xs:schema attributeFormDefault="unqualified"
            elementFormDefault="qualified"
@@ -136,41 +138,48 @@ $XML_SCHEMA = @"
   
 </xs:schema>
 "@
+        DEFAULT_PARENT = "%DefaultNamingContext%"
 
-$DEFAULT_PARENT = "%DefaultNamingContext%"
+        DEFAULT_GROUP_OPTS = @{
+            Parent = "%DefaultNamingContext%"
+            Scope = "Global"
+            Category = "Security"
+        }
 
-$DEFAULT_GROUP_OPTS = @{
-    Parent = $DEFAULT_PARENT
-    Scope = "Global"
-    Category = "Security"
+    }
 }
 
 Function Confirm-XmlSchema
 {
     <#
         .Synopsis
-
+        Confirms that a given XML file conforms to the specified
+        XSD schema.
         .Description
-
-        .Parameter x
-
-        .Example
-
+        This function uses the built in XML API to confirm that
+        XML files conforms to a specific XSD schema definition.
+        If the validation fails, an error is thrown.
+        .Parameter XsdPath
+        Path to the XSD schema file
+        .Parameter XmlPath
+        One or more paths to XML files to validate
     #>
     [CmdletBinding()]
     Param
     (
         [Parameter(Mandatory=$true)]
-		[string]$SchemaXsd,
+	    [string]$XsdPath,
 		
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-		$XmlFile
+        [Alias('Path')]
+	    [string[]]$XmlPath
     )
     
     Begin
     {
+	    $xsd = Get-Item -Path $XsdPath -ErrorAction Stop
         $schemas = New-Object System.Xml.Schema.XmlSchemaSet
-        $xmlReader = New-Object System.Xml.XmlTextReader(New-Object System.IO.StringReader($SchemaXsd))
+        $xmlReader = New-Object System.Xml.XmlTextReader($xsd.FullName)
         $schemas.Add($null, $xmlReader) | Out-Null
         $xmlReader.Close()
         $settings = New-Object System.Xml.XmlReaderSettings
@@ -180,42 +189,32 @@ Function Confirm-XmlSchema
 
     Process
     {
-        $xmlPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($XmlFile)
-        if (-not (Test-Path $xmlPath))
+        foreach ($path in $XmlPath)
         {
-            Write-Error "XML file $xmlPath doesn't exist"
-            break
-        }
-        
-        $fs = [System.IO.File]::OpenRead($xmlPath)
-        try
-        {
-            $reader = [System.Xml.XmlReader]::Create((New-Object System.IO.StreamReader($fs)), $settings)
-            while ($reader.Read())
+		    $xml = Get-Item -Path $path
+            if (-not $xml)
             {
+                continue
             }
-            
-            $true
-        }
-        finally
-        {
-            $fs.Dispose()
+
+            $fs = [System.IO.File]::OpenRead($xml.FullName)
+            try
+            {
+                $reader = [System.Xml.XmlReader]::Create((New-Object System.IO.StreamReader($fs)), $settings)
+                while ($reader.Read())
+                {
+                }
+            }
+            finally
+            {
+                $fs.Dispose()
+            }
         }
     }
 }
 
 Function New-ParameterizedGroup
 {
-	<#
-		.Synopsis
-		
-		.Description
-		
-		.Parameter Parameter1
-		
-		.Example
-		
-	#>
 	[CmdletBinding(SupportsShouldProcess = $true)]
 	Param
 	(
@@ -244,42 +243,31 @@ Function New-ParameterizedGroup
 		[switch]$PassThru
 	)
 	
-	Begin
+	if (-not ($WhatIfPreference -or [adsi]::Exists("LDAP://$Container")))
 	{
-		if (-not ($WhatIfPreference -or [adsi]::Exists("LDAP://$Container")))
-		{
-			throw "AD container '$Container' doesn't exist"
-		}
+		throw "AD container '$Container' doesn't exist"
+	}
 
-		$groupName = $Prefix + $BaseName + $Suffix
-		$existing = Get-ADObject -Filter { sAMAccountName -eq $groupName -or name -eq $groupName }
-		if ($existing -eq $null)
-		{
-			New-ADGroup -GroupCategory $GroupCategory -GroupScope $GroupScope -Name $groupName -Description $Description -Path $Container -PassThru:$PassThru -WhatIf:$WhatIfPreference
-		}
-		else
-		{
-			Write-Warning "An object with the name '$groupName' already exists, in the location $($existing.DistinguishedName)"
-			if ($PassThru)
-			{
-                if ($existing.ObjectClass -contains 'group')
-                {
-    				Write-Output (Get-ADGroup -Identity $existing.DistinguishedName)
-                }
-                else
-                {
-                    Write-Error "The existing object at $($existing.DistinguishedName) is not a group"
-                }
-			}
-		}
-	}
-	
-	Process
+	$groupName = $Prefix + $BaseName + $Suffix
+	$existing = Get-ADObject -Filter { sAMAccountName -eq $groupName -or name -eq $groupName }
+	if ($existing -eq $null)
 	{
+		New-ADGroup -GroupCategory $GroupCategory -GroupScope $GroupScope -Name $groupName -Description $Description -Path $Container -PassThru:$PassThru -WhatIf:$WhatIfPreference
 	}
-	
-	End
+	else
 	{
+		Write-Warning "An object with the name '$groupName' already exists, in the location $($existing.DistinguishedName)"
+		if ($PassThru)
+		{
+            if ($existing.ObjectClass -contains 'group')
+            {
+    			Write-Output (Get-ADGroup -Identity $existing.DistinguishedName)
+            }
+            else
+            {
+                Write-Error "The existing object at $($existing.DistinguishedName) is not a group"
+            }
+		}
 	}
 }
 
@@ -300,7 +288,7 @@ Function Use-SubstitutionVariables
     Begin
     {
         $markers = @{}
-        $Variables.Keys | ForEach-Object { $markers."$MarkerChar$_$MarkerChar" = $Variables.$_ }
+        $Variables.Keys | ForEach-Object -Process { $markers."$MarkerChar$_$MarkerChar" = $Variables.$_ }
     }
 
     Process
@@ -338,172 +326,161 @@ Function Use-GroupDefinitions
         [Parameter()]
         [switch]$PassThru
 	)
-	
-	Begin
+
+	if (-not (Test-Path -Path $GroupDefinitions -PathType Leaf))
 	{
-		if (-not (Test-Path -Path $GroupDefinitions -PathType Leaf))
-		{
-			throw "The membership map file '$GroupDefinitions' doesn't exist"
-		}
-
-        if (-not (Confirm-XmlSchema -SchemaXsd $XML_SCHEMA -XmlFile $GroupDefinitions))
-        {
-            throw "The XML in '$GroupDefinitions' failed schema validation"
-        }
-
-        $xml = [xml](Get-Content $GroupDefinitions)
-
-        $variables = @{
-            DefaultNamingContext = ([adsi]"LDAP://RootDSE").defaultNamingContext
-        }
-
-        foreach ($v in $xml.DocumentElement.Variable)
-        {
-            Write-Verbose "Defining variable $($v.Name)"
-            $variables.$([string]$v.Name) = [string]$v.Value
-        }
-
-        $containers = @{}
-        foreach ($ou in $xml.DocumentElement.OrganizationalUnit)
-        {
-            $ouDef = @{
-                Parent = $DEFAULT_PARENT
-            }
-
-            # Perform variable substition
-            foreach ($a in 'Name', 'Description', 'Parent')
-            {
-                if ($ou.$a)
-                {
-                    $ouDef.$a = [string]$ou.$a
-                }
-
-                $ouDef.$a = $ouDef.$a | Use-SubstitutionVariables -Variables $variables
-            }
-
-            # Check if a cached parent name is used
-            if ($containers.ContainsKey($ouDef.Parent))
-            {
-                $ouDef.Parent = $containers.($ouDef.Parent)
-            }
-
-            $ouDef.Path = "OU=$($ouDef.Name),$($ouDef.Parent)"
-            if (-not ($WhatIfPreference -or [adsi]::Exists("LDAP://$($ouDef.Parent)")))
-            {
-                throw "The parent container '$($ouDef.Parent)' doesn't exist"
-            }
-
-            if (-not [adsi]::Exists("LDAP://$($ouDef.Path)"))
-            {
-                New-ADOrganizationalUnit -Name $ouDef.Name -Path $ouDef.Parent -Description $ouDef.Description -WhatIf:$WhatIfPreference
-            }
-            else
-            {
-                Write-Warning "The OU $($ouDef.Path) already exists"
-                $object = Get-ADOrganizationalUnit -Identity $ouDef.Path -Properties Description
-
-                if ($object.Description -cne $ouDef.Description)
-                {
-                    Write-Verbose "Changing description to '$($ouDef.Description)' from '$($object.Description)' on $($ouDef.Path)"
-                    $object | Set-ADOrganizationalUnit -Description $ouDef.Description -WhatIf:$WhatIfPreference
-                }
-            }
-
-            $containers.$($ouDef.Name) = $ouDef.Path
-        }
-
-        $referenceMap = @{}
-        $memberships = @{}
-        foreach ($def in $xml.DocumentElement.GroupDefinitions)
-        {
-            $opts = $DEFAULT_GROUP_OPTS.Clone()
-            'Container', 'Prefix', 'Suffix', 'Scope', 'Category' | Where-Object { $def.$_ } | ForEach-Object { $opts.$_ = $def.$_ | Use-SubstitutionVariables -Variables $variables }
-            if ($containers.ContainsKey($opts.Container))
-            {
-                $opts.Container = $containers.$($opts.Container)
-            }
-
-            foreach ($group in $def.Group)
-            {
-                $baseName = [string]$group.Name | Use-SubstitutionVariables -Variables $variables
-                $fullName = $opts.Prefix + $baseName + $opts.Suffix
-                $groupDn = "CN=$fullName,$($opts.Container)"
-                $referenceMap.$baseName = $fullName
-                $description = $group.Description | Use-SubstitutionVariables -Variables $variables
-                $groupObject = New-ParameterizedGroup -BaseName $baseName -Description $description -Prefix $opts.Prefix -Suffix $opts.Suffix -Container $opts.Container -GroupScope $opts.Scope -GroupCategory $opts.Category -PassThru
-                if ($PassThru -and $groupObject)
-                {
-                    Write-Output $groupObject
-                }
-
-                if ($group.Member)
-                {
-                    foreach ($member in $group.Member)
-                    {
-                        if (-not $memberships.ContainsKey($groupDn))
-                        {
-                            $memberships.$groupDn = @()
-                        }
-
-                        $memberships.$groupDn += [string]$member.Name
-                    }
-                }
-            }
-        }
-
-        # Check memberships
-        foreach ($groupDn in $memberships.Keys)
-        {
-            Write-Verbose "Checking memberships of $groupDn"
-            if ([adsi]::Exists("LDAP://$groupDn"))
-            {
-                $actualMembers = Get-ADGroupMember -Identity $groupDn | ForEach-Object { Get-ADObject -Identity $_ -Properties sAMAccountName }
-                $membersMissing = @()
-                foreach ($memberName in $memberships.$groupDn)
-                {
-                    if ($referenceMap.ContainsKey($memberName))
-                    {
-                        $memberName = $referenceMap.$memberName
-                    }
-
-                    $alreadyMember = $false
-                    foreach ($am in $actualMembers)
-                    {
-                        if ($am.Name -eq $memberName -or $am.sAMAccountName -eq $memberName -or $am.distinguishedName -eq $memberName)
-                        {
-                            Write-Verbose "$memberName already member of $groupDn"
-                            $alreadyMember = $true
-                            break
-                        }
-                    }
-
-                    if (-not $alreadyMember)
-                    {
-                        $membersMissing += $memberName
-                    }
-                }
-
-                if ($membersMissing.Length -gt 0)
-                {
-                    Write-Verbose "Adding missing memberships to $groupDn"
-                    Add-ADGroupMember -Identity $groupDn -Members $membersMissing -WhatIf:$WhatIfPreference
-                }
-            }
-        }
+		throw "The membership map file '$GroupDefinitions' doesn't exist"
 	}
-	
-	Process
-	{
-	}
-	
-	End
-	{
-	}
+
+    if (-not (Confirm-XmlSchema -SchemaXsd $CONSTANTS.XML_SCHEMA -XmlFile $GroupDefinitions))
+    {
+        throw "The XML in '$GroupDefinitions' failed schema validation"
+    }
+
+    $xml = [xml](Get-Content $GroupDefinitions)
+
+    $variables = @{
+        DefaultNamingContext = ([adsi]"LDAP://RootDSE").defaultNamingContext
+    }
+
+    foreach ($v in $xml.DocumentElement.Variable)
+    {
+        Write-Verbose "Defining variable $($v.Name)"
+        $variables.$([string]$v.Name) = [string]$v.Value
+    }
+
+    $containers = @{}
+    foreach ($ou in $xml.DocumentElement.OrganizationalUnit)
+    {
+        $ouDef = @{
+            Parent = $CONSTANTS.DEFAULT_PARENT
+        }
+
+        # Perform variable substition
+        foreach ($a in 'Name', 'Description', 'Parent')
+        {
+            if ($ou.$a)
+            {
+                $ouDef.$a = [string]$ou.$a
+            }
+
+            $ouDef.$a = $ouDef.$a | Use-SubstitutionVariables -Variables $variables
+        }
+
+        # Check if a cached parent name is used
+        if ($containers.ContainsKey($ouDef.Parent))
+        {
+            $ouDef.Parent = $containers.($ouDef.Parent)
+        }
+
+        $ouDef.Path = "OU=$($ouDef.Name),$($ouDef.Parent)"
+        if (-not ($WhatIfPreference -or [adsi]::Exists("LDAP://$($ouDef.Parent)")))
+        {
+            throw "The parent container '$($ouDef.Parent)' doesn't exist"
+        }
+
+        if (-not [adsi]::Exists("LDAP://$($ouDef.Path)"))
+        {
+            New-ADOrganizationalUnit -Name $ouDef.Name -Path $ouDef.Parent -Description $ouDef.Description -WhatIf:$WhatIfPreference
+        }
+        else
+        {
+            Write-Warning "The OU $($ouDef.Path) already exists"
+            $object = Get-ADOrganizationalUnit -Identity $ouDef.Path -Properties Description
+
+            if ($object.Description -cne $ouDef.Description)
+            {
+                Write-Verbose "Changing description to '$($ouDef.Description)' from '$($object.Description)' on $($ouDef.Path)"
+                $object | Set-ADOrganizationalUnit -Description $ouDef.Description -WhatIf:$WhatIfPreference
+            }
+        }
+
+        $containers.$($ouDef.Name) = $ouDef.Path
+    }
+
+    $referenceMap = @{}
+    $memberships = @{}
+    foreach ($def in $xml.DocumentElement.GroupDefinitions)
+    {
+        $opts = $CONSTANTS.DEFAULT_GROUP_OPTS.Clone()
+        'Container', 'Prefix', 'Suffix', 'Scope', 'Category' | Where-Object { $def.$_ } | ForEach-Object { $opts.$_ = $def.$_ | Use-SubstitutionVariables -Variables $variables }
+        if ($containers.ContainsKey($opts.Container))
+        {
+            $opts.Container = $containers.$($opts.Container)
+        }
+
+        foreach ($group in $def.Group)
+        {
+            $baseName = [string]$group.Name | Use-SubstitutionVariables -Variables $variables
+            $fullName = $opts.Prefix + $baseName + $opts.Suffix
+            $groupDn = "CN=$fullName,$($opts.Container)"
+            $referenceMap.$baseName = $fullName
+            $description = $group.Description | Use-SubstitutionVariables -Variables $variables
+            $groupObject = New-ParameterizedGroup -BaseName $baseName -Description $description -Prefix $opts.Prefix -Suffix $opts.Suffix -Container $opts.Container -GroupScope $opts.Scope -GroupCategory $opts.Category -PassThru
+            if ($PassThru -and $groupObject)
+            {
+                Write-Output $groupObject
+            }
+
+            if ($group.Member)
+            {
+                foreach ($member in $group.Member)
+                {
+                    if (-not $memberships.ContainsKey($groupDn))
+                    {
+                        $memberships.$groupDn = @()
+                    }
+
+                    $memberships.$groupDn += [string]$member.Name
+                }
+            }
+        }
+    }
+
+    # Check memberships
+    foreach ($groupDn in $memberships.Keys)
+    {
+        Write-Verbose "Checking memberships of $groupDn"
+        if ([adsi]::Exists("LDAP://$groupDn"))
+        {
+            $actualMembers = Get-ADGroupMember -Identity $groupDn | ForEach-Object { Get-ADObject -Identity $_ -Properties sAMAccountName }
+            $membersMissing = @()
+            foreach ($memberName in $memberships.$groupDn)
+            {
+                if ($referenceMap.ContainsKey($memberName))
+                {
+                    $memberName = $referenceMap.$memberName
+                }
+
+                $alreadyMember = $false
+                foreach ($am in $actualMembers)
+                {
+                    if ($am.Name -eq $memberName -or $am.sAMAccountName -eq $memberName -or $am.distinguishedName -eq $memberName)
+                    {
+                        Write-Verbose "$memberName already member of $groupDn"
+                        $alreadyMember = $true
+                        break
+                    }
+                }
+
+                if (-not $alreadyMember)
+                {
+                    $membersMissing += $memberName
+                }
+            }
+
+            if ($membersMissing.Length -gt 0)
+            {
+                Write-Verbose "Adding missing memberships to $groupDn"
+                Add-ADGroupMember -Identity $groupDn -Members $membersMissing -WhatIf:$WhatIfPreference
+            }
+        }
+    }
 }
 
 if ($GetSchema)
 {
-    $XML_SCHEMA
+    $CONSTANTS.XML_SCHEMA
     break
 }
 
