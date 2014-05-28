@@ -1,6 +1,6 @@
 ﻿<#
     .Synopsis
-    Creates any number of test users with common characteristics
+    Creates any number of test users in Active Directory with common characteristics
     .Description
     This script can be used to bulk create test users in Active Directory, which can be
     handy when stress testing an environment or preparing for a large number of testers.

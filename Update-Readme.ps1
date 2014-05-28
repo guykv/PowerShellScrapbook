@@ -1,8 +1,12 @@
 ﻿<#
-    .Synopsis
+    .SYNOPSIS
     Updates README.md
-    .Description
-    This script extracts information from the 
+    .DESCRIPTION
+    This script extracts information from the script files to generate
+    a simple markdown table of all the scripts.
+    .PARAMETER ConsoleOnly
+    If specified, the output is rendered on the console rather than into
+    the readme file.
 #>
 Param
 (
@@ -10,9 +14,9 @@ Param
     [switch]$ConsoleOnly
 )
 
-$CONSTANTS = Data {
+$CONST = Data {
     @{
-        TopText = @"
+        TOPTEXT = @"
 PowerShellRecycleBin
 ====================
 
@@ -23,7 +27,7 @@ in the future become handy once more.
 
 "@
 
-        FileName = "README.md"
+        FILENAME = "README.md"
     }
 }
 
@@ -166,7 +170,7 @@ $rows = @()
     }
 }
 
-$text = $CONSTANTS.TopText
+$text = $CONST.TOPTEXT
 $text += ($rows | Sort-Object -Property Name | Format-MarkdownTable -Properties Name,Type,Synopsis | Out-String)
 
 if ($ConsoleOnly)
@@ -175,5 +179,5 @@ if ($ConsoleOnly)
 }
 else
 {
-    Set-Content -Value $text -Path $CONSTANTS.FileName
+    Set-Content -Value $text -Path $CONST.FILENAME
 }
