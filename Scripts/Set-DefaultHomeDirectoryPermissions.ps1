@@ -29,7 +29,7 @@
     This is useful if the permissions are set in a way that
     denies admins access.
     .Notes
-    Author: Guy Kvaernberg, Steria AS <gtk@steria.no>
+    Author: Guy Kvaernberg <me@guyk.no>
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 Param

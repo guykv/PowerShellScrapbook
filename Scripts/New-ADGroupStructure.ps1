@@ -44,6 +44,8 @@
     Whether the group objects are to be output from the script
     .Parameter GetSchema
     Outputs the group definition XSD schema
+    .Notes
+    Author: Guy Kvaernberg <me@guyk.no>
 #>
 [CmdletBinding(SupportsShouldProcess = $true, DefaultParameterSetName = 'GroupDefinitions')]
 Param

@@ -12,6 +12,8 @@ Function Confirm-XmlSchema
         Path to the XSD schema file
         .Parameter XmlPath
         One or more paths to XML files to validate
+        .Notes
+        Author: Guy Kvaernberg <me@guyk.no>
     #>
     [CmdletBinding()]
     Param

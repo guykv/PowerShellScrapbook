@@ -42,6 +42,8 @@
     users. Defaults to @[domain.dns.name].
     .Parameter PassThru
     Whether to output the user objects as they are created.
+    .Notes
+    Author: Guy Kvaernberg <me@guyk.no>
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 Param
