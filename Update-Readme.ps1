@@ -17,7 +17,7 @@ Param
 $CONST = Data {
     @{
         TOPTEXT = @"
-PowerShellRecycleBin
+PowerShellScrapbook
 ====================
 
 This is simply a repository of PowerShell functions and scripts that might sometime
