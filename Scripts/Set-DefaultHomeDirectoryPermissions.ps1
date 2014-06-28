@@ -28,6 +28,8 @@
     the Administrator group and SYSTEM will be given full control.
     This is useful if the permissions are set in a way that
     denies admins access.
+    .Parameter SubinaclPath
+    Where to find subinacl.exe (can be downloaded from Microsoft)
     .Notes
     Author: Guy Kvaernberg <me@guyk.no>
 #>
