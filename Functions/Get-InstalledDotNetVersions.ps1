@@ -6,7 +6,8 @@
         .DESCRIPTION
         Uses the methods described in http://support.microsoft.com/kb/315291 and
         http://msdn.microsoft.com/en-us/library/hh925568(v=vs.110).aspx#net_b to determine
-        installed versions of .NET Framework.
+        installed versions of .NET Framework. Detects versions 1.0, 1.1, 2.0, 3.0,
+        3.5, 4.0, 4.5, 4.5.1, 4.5.2
     #>
     $oldPath = "HKLM:\Software\Microsoft\.NETFramework\Policy"
     $path = "HKLM:\Software\Microsoft\Net Framework Setup\NDP"
