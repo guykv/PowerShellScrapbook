@@ -2,7 +2,7 @@
 {
     <#
         .SYNOPSIS
-        Renames a file or folder to <originalname>.old
+        Renames a file or folder to [originalname].old
         .DESCRIPTION
         Adds the suffix '.old' to a file or folder. If this name is taken
         (by invoking this function multiple time for instance), a number
