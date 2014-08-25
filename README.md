@@ -12,5 +12,6 @@ Confirm-XmlSchema.ps1                   | Function | Confirms that a given XML f
 Get-InstalledDotNetVersions.ps1         | Function | Detects which version(s) of .NET Framework that are present on this system.       
 New-ADGroupStructure.ps1                | Script   | Creates organizational units and groups in Active Directory from XML configuration
 New-TestUser.ps1                        | Script   | Creates any number of test users in Active Directory with common characteristics  
+Rename-DotOld.ps1                       | Function | Renames a file or folder to <originalname>.old                                    
 Set-DefaultHomeDirectoryPermissions.ps1 | Script   | Sets default permissions and ownership to a user's home directory                 
 
