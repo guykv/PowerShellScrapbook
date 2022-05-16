@@ -62,9 +62,24 @@ function Convert-DokuWikiTableHeader
     }
 }
 
+$WarningPatterns = @(
+    '\[\[.*>.*\]\]'
+    '\[\[\\\\.*\]\]'
+    '\(\(.*\)\)'
+    '~~NOTOC~~'
+    '{{ '
+    ' }}'
+    '{{.*\|.*}}'
+    '<nowiki>'
+    '%%'
+    '<file>'
+    '<html>'
+    '<php>'
+)
+
 $SimpleReplacements = @(
     @{
-        Replace = '//([^/]*)//'
+        Replace = '\/\/([^/]*)\/\/'
         With = '*$1*'
     }
     @{
@@ -109,21 +124,30 @@ $SimpleReplacements = @(
     }
 )
 
-$context = @{
-    InText = $true
-    InTable = $false
-    InCode = $false
-}
-
+$inMarkup = $true
+$lineNumber = 0
 foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
 {
-    $converted = $line
-    foreach ($r in $SimpleReplacements)
+    $converted = $line.Trim()
+    $lineNumber++
+    if ($inMarkup)
     {
-        $converted = $converted -replace $r.Replace, $r.With
+        foreach ($w in $WarningPatterns)
+        {
+            if ($converted -match $w)
+            {
+                Write-Warning "The markup in $Path line $lineNumber contains an unsupported DokuWiki construct ($w)"
+            }
+        }
+    
+        foreach ($r in $SimpleReplacements)
+        {
+            $converted = $converted -replace $r.Replace, $r.With
+        }
+    
+        $converted = Convert-DokuWikiLinks -Markup $converted
+        $converted = Convert-DokuWikiTableHeader -Markup $converted
     }
 
-    $converted = Convert-DokuWikiLinks -Markup $converted
-    $converted = Convert-DokuWikiTableHeader -Markup $converted
     $converted
 }
