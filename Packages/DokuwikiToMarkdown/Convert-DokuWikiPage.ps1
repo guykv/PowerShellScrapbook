@@ -13,7 +13,11 @@ param (
 
     [Parameter(Mandatory=$true)]
     [string]
-    $Destination
+    $Destination,
+
+    [Parameter()]
+    [string]
+    $Newline = "`r`n"
 )
 
 function Convert-DokuWikiLinks
@@ -22,7 +26,7 @@ function Convert-DokuWikiLinks
         [string]$Markup
     )
 
-    $pattern = '\[\[([^\|]+)(?:\|([^\]]+))?\]\]'
+    $pattern = '\[\[:?([^\|]+)(?:\|([^\]]+))?\]\]'
     foreach ($match in [regex]::Matches($Markup, $pattern))
     {
         $link = $match.Groups[1].Value
@@ -30,6 +34,17 @@ function Convert-DokuWikiLinks
         if ($link -match '^https?://')
         {
             $replacement = "[$text]($link)"
+        }
+        elseif ($link -match '^\\\\')
+        {
+            $link = $link -replace '\\', '/'
+            if (-not $text)
+            {
+                $text = $link
+            }
+
+            $href = "file:///$link"
+            $replacement = "<a href=`"$href`">$text</a>"
         }
         else
         {
@@ -64,12 +79,10 @@ function Convert-DokuWikiTableHeader
 
 $WarningPatterns = @(
     '\[\[.*>.*\]\]'
-    '\[\[\\\\.*\]\]'
     '\(\(.*\)\)'
     '~~NOTOC~~'
     '{{ '
     ' }}'
-    '{{.*\|.*}}'
     '<nowiki>'
     '%%'
     '<file>'
@@ -103,24 +116,40 @@ $SimpleReplacements = @(
         With = '# $1'
     }
     @{
-        Replace = '==== (.*) ===='
+        Replace = '==== (.*) ====*'
         With = '## $1'
     }
     @{
-        Replace = '=== (.*) ==='
+        Replace = '=== (.*) ===*'
         With = '### $1'
     }
     @{
-        Replace = '== (.*) =='
+        Replace = '== (.*) ==*'
         With = '#### $1'
     }
     @{
-        Replace = '= (.*) ='
+        Replace = '= (.*) =*'
         With = '##### $1'
     }
     @{
         Replace = '^----$'
         With = '---'
+    }
+    @{
+        Replace = '^  - '
+        With = '1. '
+    }
+    @{
+        Replace = '<html><br></html>'
+        With = '<br/>'
+    }
+    @{
+        Replace = '<code>(.*?)<\/code>'
+        With = '`$1`'
+    }
+    @{
+        Replace = '<code ([^<]+)>(.*?)<\/code>'
+        With = $Newline + '```$1' + $Newline + '$2' + $Newline + '```' + $Newline
     }
 )
 
@@ -128,10 +157,15 @@ $inMarkup = $true
 $lineNumber = 0
 foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
 {
-    $converted = $line.Trim()
+    $converted = $line.TrimEnd()
     $lineNumber++
     if ($inMarkup)
     {
+        foreach ($r in $SimpleReplacements)
+        {
+            $converted = $converted -replace $r.Replace, $r.With
+        }
+    
         foreach ($w in $WarningPatterns)
         {
             if ($converted -match $w)
@@ -140,13 +174,21 @@ foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
             }
         }
     
-        foreach ($r in $SimpleReplacements)
-        {
-            $converted = $converted -replace $r.Replace, $r.With
-        }
-    
         $converted = Convert-DokuWikiLinks -Markup $converted
         $converted = Convert-DokuWikiTableHeader -Markup $converted
+    }
+
+    if ($converted -match '^(.*?)<code(?: ([^>]+))?>(.*)$')
+    {
+        $converted = $Matches.1 + $Newline + '```' + $Matches.2 + $Newline + $Matches.3
+        $inMarkup = $false
+    }
+
+    if (-not $inMarkup -and $converted -match '^(.*?)<\/code>(.*)$')
+    {
+        Write-Warning $lineNumber
+        $converted = $Matches.1 + $Newline + '```' + $Newline + $Matches.2
+        $inMarkup = $true
     }
 
     $converted
