@@ -24,15 +24,13 @@ param (
 )
 
 $WarningPatterns = @(
-    '\[\[.*>.*\]\]'
-    '\(\(.*\)\)'
+    '\[\[.*?>.*?\]\]'
+    '\(\(.*?\)\)'
     '~~NOTOC~~'
-    '{{ '
-    ' }}'
     '<nowiki>'
     '%%'
     '<file>'
-    '<html>'
+    '<html>(?!<br></html>)'
     '<php>'
 )
 
@@ -111,27 +109,33 @@ function Convert-MediaLinks
         [string]$SourceReference
     )
 
-    $pattern = '{{:?([^?]+?)(?:\??([\dx]+|linkonly))?(:?\|([^}]*))?}}'
+    $pattern = '{{ ?:?([^?]+?)(?:\??([\dx]+|linkonly))?(:?\|([^}]*))? ?}}'
     foreach ($match in [regex]::Matches($Markup, $pattern))
     {
-        $dokuWikiPath = $match.Groups[1].Value
+        $fullMatch = $match.Groups[0].Value
+        $dokuWikiPath = $match.Groups[1].Value.Trim()
         $spec = $match.Groups[2].Value
-        $caption = $match.Groups[3].Value
+        $caption = $match.Groups[4].Value
 
-        if ($caption)
+        if ($fullMatch -match '^{{ | }}$')
         {
-            Write-Warning "Media caption not supported: $SourceReference"
+            Write-Warning "Media horizontal alignment not supported ('{{ ' or ' }}'): $SourceReference"
         }
 
         if (-not $AttachmentMap.ContainsKey($dokuWikiPath))
         {
-            Write-Warning "Unmapped attachment: $($dokuWikiPath)"
+            Write-Warning "Unmapped attachment $($dokuWikiPath): $SourceReference"
             continue
         }
 
         $mapping = $AttachmentMap.$dokuWikiPath
         $mdPath = $mapping.MdPath
         $name = $mapping.Name
+
+        if ($mapping.IsImage -and $caption)
+        {
+            Write-Warning "Image caption not supported: $SourceReference"
+        }
 
         if ($spec -eq 'linkonly')
         {
@@ -149,7 +153,22 @@ function Convert-MediaLinks
                 $spec = " =$spec"
             }
 
-            $replacement = "![$name]($mdPath$spec)"
+            if ($mapping.IsImage)
+            {
+                $replacement = "![$name]($mdPath$spec)"
+            }
+            else
+            {
+                if ($caption)
+                {
+                    $replacement = "[$caption]($mdPath$spec)"
+                }
+                else
+                {
+                    $replacement = "[$name]($mdPath$spec)"
+                }
+            }
+
         }
 
         $converted = $converted.Replace($match.Value, $replacement)
@@ -169,6 +188,18 @@ function Convert-DokuWikiLinks
     {
         $link = $match.Groups[1].Value
         $text = $match.Groups[2].Value
+        if (-not $text)
+        {
+            if ($link.EndsWith(':start'))
+            {
+                $text = ($link -split ":")[-2]
+            }
+            else
+            {
+                $text = ($link -split ":")[-1]
+            }
+        }
+
         if ($link -match '^https?://')
         {
             $replacement = "[$text]($link)"
@@ -186,7 +217,7 @@ function Convert-DokuWikiLinks
         }
         else
         {
-            $page = $link.Replace(':', '/')
+            $page = $link.Replace(':', '/').Replace(' ', '-')
             $replacement = "[$text](/$page)"
         }
 
@@ -215,7 +246,7 @@ function Convert-DokuWikiTableHeader
     }
 }
 
-$attachmentMap = Read-AttachmentMap -AttachmentMapPath $AttachmentMapPath
+$attachmentMap = Read-AttachmentMap -AttachmentMapPath $AttachmentMapPath -Required
 $inMarkup = $true
 $lineNumber = 0
 foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
@@ -225,17 +256,17 @@ foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
     $sourceReference = "$Path`:$lineNumber"
     if ($inMarkup)
     {
-        foreach ($r in $SimpleReplacements)
-        {
-            $converted = $converted -replace $r.Replace, $r.With
-        }
-    
         foreach ($w in $WarningPatterns)
         {
             if ($converted -match $w)
             {
                 Write-Warning "The markup contains an unsupported DokuWiki construct ($w): $sourceReference"
             }
+        }
+    
+        foreach ($r in $SimpleReplacements)
+        {
+            $converted = $converted -replace $r.Replace, $r.With
         }
     
         $converted = Convert-DokuWikiLinks -Markup $converted

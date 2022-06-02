@@ -40,9 +40,10 @@ function ConvertFrom-DokuWikiPageName
     $converted.Replace('-', '%2D').Replace('_', '-')
 }
 
+Write-Host "Mapping media attachments"
 $mediaRoot = Join-Path -Path $Path -ChildPath media
 $attachmentMap = Read-AttachmentMap -AttachmentMapPath $AttachmentMapPath
-
+$attachmentCount = 0
 foreach ($mediaItem in (Get-ChildItem -Path $mediaRoot -Recurse -File))
 {
     $fullPath = $mediaItem.FullName
@@ -55,7 +56,7 @@ foreach ($mediaItem in (Get-ChildItem -Path $mediaRoot -Recurse -File))
     
     if ($attachmentMap.ContainsKey($dokuWikiPath))
     {
-        $image = $image.$dokuWikiPath
+        $image = $attachmentMap.$dokuWikiPath
     }
     else
     {
@@ -63,26 +64,42 @@ foreach ($mediaItem in (Get-ChildItem -Path $mediaRoot -Recurse -File))
         if ($mediaItem.Extension -in @('.png', '.jpg', '.gif', '.bmp'))
         {
             $mdFilename = "image-$newGuid$ext"
+            $isImage = $true
         }
         else
         {
             $mdFilename = "$($mediaItem.BaseName)-$newGuid$ext"
+            $isImage = $false
         }
 
         $image = New-Object -TypeName PSObject -Property @{
             Name = $mediaItem.Name
             DokuWikiPath = $dokuWikiPath
             MdPath = "/.attachments/$mdFilename"
+            IsImage = $isImage
         }
 
         $attachmentMap.$dokuWikiPath = $image
     }
+
+    $destinationPath = $Destination + $image.MdPath
+    $parentPath = Split-Path -Path $destinationPath -Parent
+    if (-not (Test-Path -Path $parentPath -PathType Container))
+    {
+        New-Item -Path $parentPath -ItemType Container | Out-Null
+    }
+
+    Copy-Item -Path $fullPath -Destination $destinationPath -Force | Out-Null
+    $attachmentCount++
 }
 
 Write-AttachmentMap -AttachmentMapPath $AttachmentMapPath -AttachmentMap $attachmentMap
+Write-Host "Mapped and copied $attachmentCount media attachments"
 
+Write-Host "Converting pages"
 $pageRoot = Join-Path -Path $Path -ChildPath pages
 $namespaces = @()
+$pageCount = 0
 foreach ($pagePath in (Get-ChildItem -Path $pageRoot -Filter *.txt -Recurse))
 {
     $fullPath = $pagePath.FullName
@@ -107,11 +124,11 @@ foreach ($pagePath in (Get-ChildItem -Path $pageRoot -Filter *.txt -Recurse))
     $destinationParent = Split-Path -Path $destinationPath -Parent
     if (-not (Test-Path -Path $destinationParent -PathType Container))
     {
-        Write-Warning $destinationParent
         New-Item -Path $destinationParent -ItemType Container | Out-Null
     }
     
     & $PSScriptRoot\Convert-DokuWikiPage.ps1 @page -AttachmentMapPath $AttachmentMapPath | Set-Content -Path $destinationPath -Encoding UTF8
+    $pageCount++
 }
 
-Write-Host "Done."
+Write-Host "Converted $pageCount pages."
