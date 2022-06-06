@@ -4,7 +4,8 @@ PowerShellScrapbook
 This is simply a repository of PowerShell functions and scripts that might sometime
 in the future become handy once more.
 
-###Overview
+### Overview
+
 Name                                    | Type     | Synopsis                                                                          
 --------------------------------------- | -------- | ----------------------------------------------------------------------------------
 Confirm-AdminContext.ps1                | Function | Makes sure that the script is run within an elevated admin context                
