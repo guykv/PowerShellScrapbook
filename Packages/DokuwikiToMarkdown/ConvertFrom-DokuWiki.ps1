@@ -11,6 +11,10 @@ param (
 
     [Parameter()]
     [string]
+    $RootName = "DokuWiki",
+
+    [Parameter()]
+    [string]
     $AttachmentMapPath = "$PSScriptRoot\attachmentmap.json"
 )
 
@@ -18,41 +22,21 @@ $ErrorActionPreference = 'Stop'
 
 . $PSScriptRoot\Functions.ps1
 
-function ConvertFrom-DokuWikiPageName
-{
-    param (
-        [Parameter()]
-        [string]
-        $Name
-    )
-
-    if (-not $Name)
-    {
-        return $Name
-    }
-
-    if ($Name.Length -eq 1)
-    {
-        return $Name.ToUpper()
-    }
-
-    $converted = ([string]$Name[0]).ToUpper() + $Name.Substring(1)
-    $converted.Replace('-', '%2D').Replace('_', '-')
-}
+$mdDestination = Join-Path -Path $Destination -ChildPath $RootName
 
 Write-Host "Mapping media attachments"
-$mediaRoot = Join-Path -Path $Path -ChildPath media
+$mediaRoot = (Get-Item -Path (Join-Path -Path $Path -ChildPath media)).FullName
 $attachmentMap = Read-AttachmentMap -AttachmentMapPath $AttachmentMapPath
 $attachmentCount = 0
 foreach ($mediaItem in (Get-ChildItem -Path $mediaRoot -Recurse -File))
 {
-    $fullPath = $mediaItem.FullName
-    $filename = Split-Path -Path $fullPath -Leaf
+    $sourceFullPath = $mediaItem.FullName
+    $sourceFilename = Split-Path -Path $sourceFullPath -Leaf
     $ext = $mediaItem.Extension
-    $parent = Split-Path -Path $fullPath -Parent
-    $intermediatePath = $parent.Replace($mediaRoot, '')
-    $namespace = $intermediatePath.Replace('\', ':')
-    $dokuWikiPath = "$namespace`:$filename" -replace '^:', ''
+    $sourceParent = Split-Path -Path $sourceFullPath -Parent
+    $sourceIntermediatePath = $sourceParent.Replace($mediaRoot, '')
+    $namespace = $sourceIntermediatePath.Replace('\', ':')
+    $dokuWikiPath = "$namespace`:$sourceFilename"
     
     if ($attachmentMap.ContainsKey($dokuWikiPath))
     {
@@ -82,41 +66,93 @@ foreach ($mediaItem in (Get-ChildItem -Path $mediaRoot -Recurse -File))
         $attachmentMap.$dokuWikiPath = $image
     }
 
-    $destinationPath = $Destination + $image.MdPath
-    $parentPath = Split-Path -Path $destinationPath -Parent
-    if (-not (Test-Path -Path $parentPath -PathType Container))
+    $destinationPath = Join-Path -Path $Destination -ChildPath $image.MdPath
+    $sourceParentPath = Split-Path -Path $destinationPath -Parent
+    if (-not (Test-Path -Path $sourceParentPath -PathType Container))
     {
-        New-Item -Path $parentPath -ItemType Container | Out-Null
+        New-Item -Path $sourceParentPath -ItemType Container | Out-Null
     }
 
-    Copy-Item -Path $fullPath -Destination $destinationPath -Force | Out-Null
+    Copy-Item -Path $sourceFullPath -Destination $destinationPath -Force | Out-Null
     $attachmentCount++
 }
 
 Write-AttachmentMap -AttachmentMapPath $AttachmentMapPath -AttachmentMap $attachmentMap
 Write-Host "Mapped and copied $attachmentCount media attachments"
 
+Write-Host "Mapping pages"
+$sourceRoot = (Get-Item -Path (Join-Path -Path $Path -ChildPath pages)).FullName
+$pageFiles = Get-ChildItem -Path $sourceRoot -Filter *.txt -Recurse
+$pageMap = @{}
+$pageCount = 0
+foreach ($pagePath in $pageFiles)
+{
+    $sourceFullPath = $pagePath.FullName
+    $sourceFilename = Split-Path -Path $sourceFullPath -Leaf
+    $sourceParent = Split-Path -Path $sourceFullPath -Parent
+    $intermediatePath = $sourceParent.Replace("$sourceRoot\", '')
+    $dokuWikiPath = $intermediatePath.Replace('\', ':')
+    if ($sourceFilename -ne 'start.txt')
+    {
+        $dokuWikiPath += ':' + $sourceFilename.Replace('.txt', '')
+    }
+
+    $dokuWikiPath = $dokuWikiPath.Replace('_', ' ')
+    $mdPath = '/' + (($dokuWikiPath -split ':' | ForEach-Object { ConvertFrom-DokuWikiPath -Path $_ }) -join '/')
+    if ($RootName)
+    {
+        $mdPath = "/$RootName$mdPath"
+    }
+
+    $pageMap.$dokuWikiPath = $mdPath
+    $pageCount++
+}
+
+$global:pageMap = $pageMap
+
+Write-Host "Mapped $pageCount pages"
+
 Write-Host "Converting pages"
-$pageRoot = Join-Path -Path $Path -ChildPath pages
 $namespaces = @()
 $pageCount = 0
-foreach ($pagePath in (Get-ChildItem -Path $pageRoot -Filter *.txt -Recurse))
+foreach ($pagePath in $pageFiles)
 {
-    $fullPath = $pagePath.FullName
-    $filename = Split-Path -Path $fullPath -Leaf
-    $parent = Split-Path -Path $fullPath -Parent
-    $intermediatePath = $parent.Replace($pageRoot, '')
-    $namespace = $intermediatePath.Replace('\', ':') -replace '^:', ''
+    $sourceFullPath = $pagePath.FullName
+    $sourceFilename = Split-Path -Path $sourceFullPath -Leaf
+    $sourceParent = Split-Path -Path $sourceFullPath -Parent
+    $intermediatePath = $sourceParent.Replace($sourceRoot, '')
+    $namespace = $intermediatePath.Replace('\', ':')
+    $intermediatePath = ($intermediatePath -split '\\' | ForEach-Object { ConvertFrom-DokuWikiPath -Path $_ }) -join '\'
     if ($namespaces -notcontains $namespace)
     {
         $namespaces += $namespace
     }
 
-    $name = ConvertFrom-DokuWikiPageName -Name ($filename.Replace('.txt', ''))
-    $destinationPath = "$Destination\$intermediatePath\$name`.md"
+    if ($sourceFilename -eq 'start.txt')
+    {
+        if ($intermediatePath)
+        {
+            $parent = "$mdDestination\$intermediatePath"
+        }
+        else
+        {
+            $parent = $mdDestination
+        }
+
+        $pageName = Split-Path -Path $parent -Leaf
+        $intermediateParent = Split-Path -Path $parent -Parent
+        $destinationPath = "$intermediateParent\$pageName`.md"
+    }
+    else
+    {
+        $pageName = $sourceFilename.Replace('.txt', '')
+        $pageName = ConvertFrom-DokuWikiPath -Path $pageName
+        $destinationPath = "$mdDestination\$intermediatePath\$pageName`.md"
+    }
+
     $page = @{
-        Name = $name
-        Path = $fullPath
+        Name = $pageName
+        Path = $sourceFullPath
         Namespace = $namespace
         Destination = $destinationPath
     }
@@ -127,7 +163,7 @@ foreach ($pagePath in (Get-ChildItem -Path $pageRoot -Filter *.txt -Recurse))
         New-Item -Path $destinationParent -ItemType Container | Out-Null
     }
     
-    & $PSScriptRoot\Convert-DokuWikiPage.ps1 @page -AttachmentMapPath $AttachmentMapPath | Set-Content -Path $destinationPath -Encoding UTF8
+    & $PSScriptRoot\Convert-DokuWikiPage.ps1 @page -AttachmentMapPath $AttachmentMapPath -PageMap $pageMap | Set-Content -Path $destinationPath -Encoding UTF8
     $pageCount++
 }
 

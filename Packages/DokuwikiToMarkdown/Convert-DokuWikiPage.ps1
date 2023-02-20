@@ -18,6 +18,10 @@ param (
     [Parameter(Mandatory=$true)]
     $AttachmentMapPath,
 
+    [Parameter(Mandatory=$true)]
+    [hashtable]
+    $PageMap,
+
     [Parameter()]
     [string]
     $Newline = "`r`n"
@@ -56,23 +60,23 @@ $SimpleReplacements = @(
         With = '<br/>'
     }
     @{
-        Replace = '=====* (.*) =====*'
+        Replace = '=====* ?(.*) ?=====*'
         With = '# $1'
     }
     @{
-        Replace = '==== (.*) ====*'
+        Replace = '==== ?(.*) ?====*'
         With = '## $1'
     }
     @{
-        Replace = '=== (.*) ===*'
+        Replace = '=== ?(.*) ?===*'
         With = '### $1'
     }
     @{
-        Replace = '== (.*) ==*'
+        Replace = '== ?(.*) ?==*'
         With = '#### $1'
     }
     @{
-        Replace = '= (.*) =*'
+        Replace = '= ?(.*) ?=*'
         With = '##### $1'
     }
     @{
@@ -106,16 +110,24 @@ function Convert-MediaLinks
 
         [Hashtable]$AttachmentMap,
 
-        [string]$SourceReference
+        [string]$SourceReference,
+
+        [string]$Namespace
     )
 
-    $pattern = '{{ ?:?([^?]+?)(?:\??([\dx]+|linkonly))?(:?\|([^}]*))? ?}}'
+    $pattern = '{{ ?(:?[^?]+?)(?:\??([\dx]+|linkonly))?(:?\|([^}]*))? ?}}'
     foreach ($match in [regex]::Matches($Markup, $pattern))
     {
         $fullMatch = $match.Groups[0].Value
         $dokuWikiPath = $match.Groups[1].Value.Trim()
         $spec = $match.Groups[2].Value
         $caption = $match.Groups[4].Value
+
+        if ($dokuWikiPath -notmatch '^:')
+        {
+            Write-Warning "Relative media path ($dokuwikiPath), colon prepended: $SourceReference"
+            $dokuWikiPath = ":$dokuWikiPath"
+        }
 
         if ($fullMatch -match '^{{ | }}$')
         {
@@ -180,7 +192,13 @@ function Convert-MediaLinks
 function Convert-DokuWikiLinks
 {
     param (
-        [string]$Markup
+        [string]$Markup,
+
+        [hashtable]$PageMap,
+
+        [string]$Namespace,
+
+        [string]$SourceReference
     )
 
     $pattern = '\[\[:?([^\|]+)(?:\|([^\]]+))?\]\]'
@@ -193,6 +211,7 @@ function Convert-DokuWikiLinks
             if ($link.EndsWith(':start'))
             {
                 $text = ($link -split ":")[-2]
+                $link = $link -replace "\:start$", ""
             }
             else
             {
@@ -217,8 +236,33 @@ function Convert-DokuWikiLinks
         }
         else
         {
-            $page = $link.Replace(':', '/').Replace(' ', '-')
-            $replacement = "[$text](/$page)"
+            $underscoredLink = $link.Replace('_', ' ')
+            $namespacedLink = "$Namespace`:$link".Substring(1)
+            $underscoredNamespaced = "$Namespace`:$underscoredLink".Substring(1)
+
+            if ($PageMap.ContainsKey($link))
+            {
+                $mdLink = $PageMap.$link
+            }
+            elseif ($PageMap.ContainsKey($underscoredLink))
+            {
+                $mdLink = $PageMap.$underscoredLink
+            }
+            elseif ($PageMap.ContainsKey($namespacedLink))
+            {
+                $mdLink = $PageMap.$namespacedLink
+            }
+            elseif ($PageMap.ContainsKey($underscoredNamespaced))
+            {
+                $mdLink = $PageMap.$underscoredNamespaced
+            }
+            else
+            {
+                Write-Warning "Unresolved link ($link): $SourceReference"
+                $mdLink = (($link -split ':') | ForEach-Object { ConvertFrom-DokuWikiPath -Path $_ }) -join '/'
+            }
+
+            $replacement = "[$text]($mdLink)"
         }
 
         $converted = $converted.Replace($match.Value, $replacement)
@@ -269,9 +313,9 @@ foreach ($line in (Get-Content -Path $Path -Encoding UTF8))
             $converted = $converted -replace $r.Replace, $r.With
         }
     
-        $converted = Convert-DokuWikiLinks -Markup $converted
+        $converted = Convert-DokuWikiLinks -Markup $converted -Namespace $Namespace -PageMap $PageMap -SourceReference $sourceReference
         $converted = Convert-DokuWikiTableHeader -Markup $converted
-        $converted = Convert-MediaLinks -Markup $converted -AttachmentMap $attachmentMap -SourceReference $sourceReference
+        $converted = Convert-MediaLinks -Markup $converted -AttachmentMap $attachmentMap -SourceReference $sourceReference -Namespace $Namespace
     }
 
     if ($converted -match '^(.*?)<code(?: ([^>]+))?>(.*)$')

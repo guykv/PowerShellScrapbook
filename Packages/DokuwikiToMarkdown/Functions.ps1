@@ -1,3 +1,43 @@
+function ConvertFrom-DokuWikiPath
+{
+    param (
+        [Parameter()]
+        [string]
+        $Path
+    )
+
+    if (-not $Path)
+    {
+        return $Path
+    }
+
+    if ($Path.Length -eq 1)
+    {
+        return $Path.ToUpper()
+    }
+
+    $capitalized = ([string]$Path[0]).ToUpper() + $Path.Substring(1)
+    $safeChars = $capitalized.Replace('-', '%2D').Replace('_', '-').Replace(' ', '-')
+    $safeChars
+}
+
+function ConvertTo-DokuWikiPath
+{
+    param (
+        [Parameter()]
+        [string]
+        $Path
+    )
+
+    $Path
+        .ToLower()
+        .Replace(' ', '_')
+        .Replace('-', '%2D')
+        .Replace('"', '')
+        .Replace('é', 'e')
+        .Replace('æ', )
+}
+
 function Read-AttachmentMap
 {
     param (
